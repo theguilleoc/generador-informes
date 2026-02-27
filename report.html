@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Generador de Informes - Interruptor de Potencia</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; font-size: 10pt; background: #eee; }
+
+#upload-panel {
+  background: #fff; padding: 20px; margin: 20px auto; max-width: 800px;
+  border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+#upload-panel h1 { font-size: 16pt; margin-bottom: 15px; color: #333; }
+.upload-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 15px; }
+.upload-slot {
+  border: 2px dashed #aaa; border-radius: 6px; padding: 15px 10px;
+  text-align: center; cursor: pointer; transition: all 0.2s;
+  position: relative; min-height: 90px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.upload-slot:hover { border-color: #4a90d9; background: #f0f6ff; }
+.upload-slot.loaded { border-color: #4caf50; background: #f0fff0; border-style: solid; }
+.upload-slot .slot-label { font-weight: bold; font-size: 11pt; margin-bottom: 5px; }
+.upload-slot .slot-file { font-size: 8pt; color: #666; word-break: break-all; }
+.upload-slot input[type="file"] { display: none; }
+#btn-generate {
+  background: #4a90d9; color: #fff; border: none; padding: 12px 30px;
+  font-size: 12pt; border-radius: 6px; cursor: pointer; font-weight: bold;
+}
+#btn-generate:hover { background: #3a7bc8; }
+#btn-generate:disabled { background: #ccc; cursor: not-allowed; }
+.btn-row { display: flex; align-items: center; gap: 10px; }
+#status { margin-top: 10px; color: #666; font-size: 9pt; }
+
+/* ===== REPORT ===== */
+#report-container { display: none; }
+.report-page {
+  width: 297mm; min-height: 210mm; background: #fff; margin: 10px auto;
+  padding: 6mm 10mm; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: flex; flex-direction: column;
+}
+
+/* Header */
+.page-header {
+  padding-bottom: 2mm; margin-bottom: 2mm;
+  min-height: 10mm; flex-shrink: 0;
+}
+.page-header img.logo {
+  width: 150px; height: auto;
+}
+.header-table {
+  width: 100%; border-collapse: collapse; font-size: 9pt; font-family: Arial, sans-serif;
+}
+.header-table td {
+  border: 1px solid #7F7F7F; padding: 2px 6px; vertical-align: top;
+}
+
+/* Footer */
+.page-footer { margin-top: auto; flex-shrink: 0; padding-top: 2mm; }
+.footer-table {
+  width: 100%; border-collapse: collapse; font-size: 8pt; font-family: Arial, sans-serif;
+}
+.footer-table td {
+  border: 1px solid #7F7F7F; padding: 1px 4px; vertical-align: top;
+}
+.footer-table .ft-top {
+  border-bottom: none;
+}
+.footer-table .ft-top-end {
+  border-top: none;
+}
+.footer-field {
+  border: 1px solid #ccc; padding: 0 2px; font-family: Arial, sans-serif;
+  font-size: 8pt; background: #fffff0;
+}
+.footer-field.ft-wide { width: 100%; }
+
+/* Page content area */
+.page-content { flex: 1 1 auto; }
+
+/* Tables */
+.tpl-table, .annex-table {
+  width: 100%; border-collapse: collapse; font-size: 10pt; font-family: Arial, sans-serif;
+}
+.tpl-table td, .tpl-table th,
+.annex-table td, .annex-table th {
+  border: 1px solid #7F7F7F; padding: 2px 5px; vertical-align: middle;
+}
+.hdr { background: #D8D8D8; font-weight: bold; }
+.lbl { background: #F2F2F2; font-weight: bold; }
+.data { background: #FFFFFF; }
+.hdr-border { border-color: #9B9B9B; }
+
+.field-input {
+  border: 1px solid #b8d4f0; padding: 1px 4px; font-family: Arial, sans-serif;
+  font-size: 10pt; background: #f0f7ff; width: 100%; border-radius: 3px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field-input:hover { border-color: #4a90d9; }
+.field-input:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.2); outline: none; }
+.field-textarea {
+  border: 1px solid #b8d4f0; padding: 2px 4px; font-family: Arial, sans-serif;
+  font-size: 10pt; background: #f0f7ff; width: 100%; min-height: 50px; resize: vertical;
+  border-radius: 3px; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field-textarea:hover { border-color: #4a90d9; }
+.field-textarea:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.2); outline: none; }
+
+/* Pass/Check select */
+.pass-select {
+  font-family: Arial, sans-serif; font-size: 9pt; padding: 2px 4px;
+  border: 1px solid #b8d4f0; border-radius: 3px; background: #f0f7ff;
+  cursor: pointer; text-align: center; width: 100%;
+  transition: border-color 0.2s;
+}
+.pass-select:hover { border-color: #4a90d9; }
+.pass-select:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74,144,217,0.2); outline: none; }
+.pass-select.val-correcto { color: #2e7d32; font-weight: bold; }
+.pass-select.val-incorrecto { color: #c62828; font-weight: bold; }
+.pass-select.val-pending { color: #999; }
+
+/* Radio toggles */
+.radio-toggle { cursor: pointer; user-select: none; font-family: Arial, sans-serif; }
+.radio-toggle:hover { text-decoration: underline; }
+
+/* Images */
+.annex-img { width: 100%; height: auto; display: block; }
+
+.annex-separator {
+  text-align: center; font-size: 14pt; font-weight: bold;
+  padding: 0; margin: 0; letter-spacing: 8px;
+  display: flex; align-items: center; justify-content: center;
+  height: 100%;
+}
+.annex-separator-line {
+  flex: 1; height: 2px; background: #333;
+}
+.annex-separator-text {
+  padding: 0 20px;
+}
+.annex-table { margin-bottom: 4px; }
+
+/* Right-aligned numeric values */
+.val-right { text-align: right !important; }
+
+/* ===== FOLDER MODAL ===== */
+.assign-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border-bottom: 1px solid #eee; font-size: 10pt;
+}
+.assign-row:last-child { border-bottom: none; }
+.assign-slot {
+  background: #4a90d9; color: #fff; font-weight: bold; padding: 3px 10px;
+  border-radius: 4px; min-width: 50px; text-align: center; font-size: 10pt;
+}
+.assign-slot.empty { background: #e0e0e0; color: #999; }
+.assign-file { flex: 1; color: #333; font-size: 9pt; word-break: break-all; }
+.assign-select {
+  padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px;
+  font-size: 9pt; background: #fff; min-width: 80px;
+}
+.assign-status { font-size: 9pt; margin-left: auto; }
+.assign-status.ok { color: #4caf50; }
+.assign-status.warn { color: #ff9800; }
+.assign-status.no { color: #f44336; }
+
+</style>
+</head>
+<body>
+
+<div id="upload-panel">
+  <h1>Generador de Informes - Interruptor de Potencia</h1>
+  <p style="margin-bottom:15px;color:#555;">Suba los 5 archivos .docx generados por el DV Power CAT124A.</p>
+
+  <!-- Folder upload option -->
+  <div style="margin-bottom:15px; display:flex; gap:10px; align-items:center;">
+    <button id="btn-folder" onclick="document.getElementById('folder-input').click()" style="background:#7b61ff;color:#fff;border:none;padding:10px 20px;font-size:11pt;border-radius:6px;cursor:pointer;font-weight:bold;">Seleccionar Carpeta</button>
+    <span style="color:#999;font-size:9pt;">o cargue los archivos uno a uno abajo</span>
+    <input type="file" id="folder-input" webkitdirectory multiple style="display:none" onchange="handleFolderSelect(this)">
+  </div>
+
+  <!-- Individual file slots -->
+  <div class="upload-grid">
+    <div class="upload-slot" data-slot="O1" onclick="this.querySelector('input').click()">
+      <div class="slot-label">O1</div>
+      <div class="slot-file">Open test</div>
+      <input type="file" accept=".docx" onchange="handleFile(this, 'O1')">
+    </div>
+    <div class="upload-slot" data-slot="C" onclick="this.querySelector('input').click()">
+      <div class="slot-label">C</div>
+      <div class="slot-file">Close test</div>
+      <input type="file" accept=".docx" onchange="handleFile(this, 'C')">
+    </div>
+    <div class="upload-slot" data-slot="OCO" onclick="this.querySelector('input').click()">
+      <div class="slot-label">OCO</div>
+      <div class="slot-file">Open-Close-Open</div>
+      <input type="file" accept=".docx" onchange="handleFile(this, 'OCO')">
+    </div>
+    <div class="upload-slot" data-slot="CO" onclick="this.querySelector('input').click()">
+      <div class="slot-label">CO</div>
+      <div class="slot-file">Close-Open test</div>
+      <input type="file" accept=".docx" onchange="handleFile(this, 'CO')">
+    </div>
+    <div class="upload-slot" data-slot="O2" onclick="this.querySelector('input').click()">
+      <div class="slot-label">O2</div>
+      <div class="slot-file">Open test</div>
+      <input type="file" accept=".docx" onchange="handleFile(this, 'O2')">
+    </div>
+  </div>
+  <!-- Global config (enter once, applies everywhere) -->
+  <div id="config-panel" style="margin-top:15px; padding:12px; background:#f8f8ff; border:1px solid #ddd; border-radius:6px;">
+    <div style="font-weight:bold; font-size:10pt; margin-bottom:8px; color:#555;">Configuracion del Informe</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:9pt;">
+      <label style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:50px;color:#666;">Titulo:</span>
+        <input id="cfg-titulo" class="field-input" value="INFORME DE PRUEBA - INTERRUPTOR DE POTENCIA EN CELDA DE 23 kV" style="font-size:9pt;">
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:50px;color:#666;">Codigo:</span>
+        <input id="cfg-codigo" class="field-input" value="+J01" style="font-size:9pt;width:120px;">
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;">
+        <span style="min-width:50px;color:#666;">Fecha:</span>
+        <input id="cfg-fecha" type="date" class="field-input" value="" style="font-size:9pt;width:150px;">
+      </label>
+    </div>
+  </div>
+
+  <div class="btn-row" style="margin-top:15px;">
+    <button id="btn-generate" onclick="generateReport()" disabled>Vista Previa</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<!-- Folder confirmation modal -->
+<div id="folder-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; display:none; align-items:center; justify-content:center;">
+  <div style="background:#fff; border-radius:10px; padding:25px; max-width:600px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+    <h2 style="margin:0 0 5px 0; font-size:14pt; color:#333;">Asignacion de archivos detectada</h2>
+    <p style="color:#666; font-size:9pt; margin-bottom:15px;">Verifique que cada archivo corresponda al slot correcto. Puede cambiar la asignacion con los selectores.</p>
+    <div id="folder-assignments" style="margin-bottom:15px;"></div>
+    <div id="folder-unassigned" style="margin-bottom:15px;"></div>
+    <div style="display:flex; gap:10px; justify-content:flex-end;">
+      <button onclick="closeFolderModal()" style="background:#eee;color:#333;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:10pt;">Cancelar</button>
+      <button id="btn-confirm-folder" onclick="confirmFolderAssignment()" style="background:#4a90d9;color:#fff;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:10pt;">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<div id="report-container"></div>
+
+<script>
+// ===== CONSTANTS =====
+const LOGO_BASE64 = 'data:image/png;base64,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';
+
+const TODAY_DISPLAY = new Date().toLocaleDateString('es-PY', {day:'2-digit',month:'2-digit',year:'numeric'});
+const TODAY_ISO = new Date().toISOString().slice(0, 10); // YYYY-MM-DD for date inputs
+
+function dateInputToDisplay(isoVal) {
+  if (!isoVal) return TODAY_DISPLAY;
+  const [y, m, d] = isoVal.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// Set default dates in config on load
+document.addEventListener('DOMContentLoaded', () => {
+  const fechaEl = document.getElementById('cfg-fecha');
+  if (fechaEl && !fechaEl.value) fechaEl.value = TODAY_ISO;
+});
+
+const files = {};
+const parsedData = {};
+let pageNum = 0;
+
+function handleFile(input, slot) {
+  const file = input.files[0];
+  if (!file) return;
+  files[slot] = file;
+  const slotEl = input.closest('.upload-slot');
+  slotEl.classList.add('loaded');
+  slotEl.querySelector('.slot-file').textContent = file.name;
+  updateButtons();
+}
+
+function updateButtons() {
+  const allLoaded = ['O1','C','OCO','CO','O2'].every(s => files[s]);
+  document.getElementById('btn-generate').disabled = !allLoaded;
+}
+
+function setStatus(msg) {
+  document.getElementById('status').textContent = msg;
+}
+
+// ===== DOCX PARSER =====
+const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+
+function getText(elem) {
+  let text = '';
+  const walker = document.createTreeWalker(elem, NodeFilter.SHOW_ELEMENT);
+  let node = walker.currentNode;
+  while (node) {
+    if (node.localName === 't' && node.namespaceURI === W_NS) {
+      text += node.textContent || '';
+    }
+    node = walker.nextNode();
+  }
+  return text.trim();
+}
+
+function getRows(tbl) {
+  const rows = [];
+  for (const child of tbl.children) {
+    if (child.localName === 'tr' && child.namespaceURI === W_NS) {
+      const cells = [];
+      for (const c of child.children) {
+        if (c.localName === 'tc' && c.namespaceURI === W_NS) {
+          cells.push(getText(c));
+        }
+      }
+      rows.push(cells);
+    }
+  }
+  return rows;
+}
+
+function getBlipId(trElem) {
+  const blips = trElem.getElementsByTagNameNS(A_NS, 'blip');
+  if (blips.length > 0) return blips[0].getAttributeNS(R_NS, 'embed');
+  return null;
+}
+
+async function parseDocx(file, slotName) {
+  const zip = await JSZip.loadAsync(file);
+  const relsXml = await zip.file('word/_rels/document.xml.rels').async('string');
+  const relsDoc = new DOMParser().parseFromString(relsXml, 'application/xml');
+  const relMap = {};
+  for (const rel of relsDoc.documentElement.children) {
+    relMap[rel.getAttribute('Id')] = rel.getAttribute('Target');
+  }
+  const docXml = await zip.file('word/document.xml').async('string');
+  const doc = new DOMParser().parseFromString(docXml, 'application/xml');
+  const body = doc.getElementsByTagNameNS(W_NS, 'body')[0];
+  const topTables = [];
+  for (const child of body.children) {
+    if (child.localName === 'tbl' && child.namespaceURI === W_NS) topTables.push(child);
+  }
+  const table0 = topTables[0], table1 = topTables[1];
+  const summaryRows = getRows(table0);
+  const reportRows = getRows(table1);
+
+  const images = [];
+  for (const child of table1.children) {
+    if (child.localName === 'tr' && child.namespaceURI === W_NS) {
+      const blipId = getBlipId(child);
+      if (blipId && relMap[blipId]) {
+        const imgFile = zip.file('word/' + relMap[blipId]);
+        if (imgFile) {
+          images.push('data:image/jpeg;base64,' + await imgFile.async('base64'));
+        }
+      }
+    }
+  }
+
+  const header = {};
+  if (reportRows.length > 0) {
+    header.type = reportRows[0][1] || '';
+    header.serial = reportRows[0][3] || '';
+  }
+  if (reportRows.length > 2) header.testName = reportRows[2][2] || '';
+
+  const params = {}, deviceSettings = {};
+  for (let i = 4; i <= 9 && i < reportRows.length; i++) {
+    const r = reportRows[i];
+    if (r.length >= 3 && r[1]) params[r[1].trim()] = (r[2] || '').trim();
+    if (r.length >= 5 && r[3]) deviceSettings[r[3].trim()] = (r[4] || '').trim();
+  }
+
+  return {
+    slot: slotName, header, params, deviceSettings, images,
+    sections: parseDataSections(reportRows),
+    summarySections: parseSummarySections(summaryRows)
+  };
+}
+
+function isPageBreakRow(row) { return row.length >= 4 && row[0] === 'Test lab'; }
+function isTypeHeaderRow(row) { return row.length >= 4 && row[0] === 'Type'; }
+function isEmptyRow(row) { return row.every(c => c.trim() === ''); }
+
+function parseDataSections(rows) {
+  const sections = [];
+  let cur = null, i = 15, sawBreak = false;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (isPageBreakRow(row)) { sawBreak = true; i++; continue; }
+    if (isTypeHeaderRow(row) || (row.length === 1 && row[0] === '')) { i++; continue; }
+    if (isEmptyRow(row) || (row.length >= 2 && row.every(c => c === ''))) { i++; continue; }
+    const ne = row.filter(c => c.trim() !== '');
+    if (ne.length === 1 && row.length <= 4) {
+      if (sawBreak && cur && cur.name === ne[0]) {
+        sawBreak = false; i++;
+        if (i < rows.length) { const nr = rows[i].filter(c => c.trim()); if (nr.length > 1 && ['Designation','Name','Coil'].includes(nr[0])) i++; }
+        continue;
+      }
+      cur = { name: ne[0], columns: [], data: [] };
+      sections.push(cur); sawBreak = false; i++; continue;
+    }
+    if (ne.length > 1 && ['Designation','Name','Coil'].includes(ne[0])) {
+      if (cur) cur.columns = ne; i++; continue;
+    }
+    if (cur && ne.length >= 3) {
+      let s = 0; const cl = row.map(c => c.trim());
+      while (s < cl.length && cl[s] === '') s++;
+      const d = cl.slice(s);
+      while (d.length && d[d.length-1] === '') d.pop();
+      if (d.length >= 3) cur.data.push(d);
+    }
+    i++;
+  }
+  return sections;
+}
+
+function parseSummarySections(rows) {
+  const sections = []; let cur = null;
+  for (const row of rows) {
+    if (isPageBreakRow(row) || isTypeHeaderRow(row)) continue;
+    if (row.length === 1 && row[0] === '') continue;
+    if (isEmptyRow(row)) continue;
+    const ne = row.filter(c => c.trim() !== '');
+    if (ne.length === 1 && row.length === 2) { cur = { name: ne[0], columns: [], data: [] }; sections.push(cur); continue; }
+    if (cur && !cur.columns.length && ne.length > 1 && ['Designation','Name','Coil'].includes(ne[0])) { cur.columns = ne; continue; }
+    if (cur && ne.length >= 3) cur.data.push(ne);
+  }
+  return sections;
+}
+
+// ===== PAGE WRAPPER =====
+function makePageHeader(pNum) {
+  const cfg = getConfig();
+  return `<div class="page-header">
+    <table class="header-table">
+      <tr>
+        <td rowspan="2" style="width:55%;vertical-align:middle;"><img class="logo" src="${LOGO_BASE64}" alt="Riedertech"></td>
+        <td style="text-align:left;vertical-align:top;">
+          <b>Fecha:</b><br>
+          <span class="footer-val" data-cfg="fecha">${cfg.fecha}</span>
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align:left;vertical-align:top;">
+          <b>Unidad de Mediciones y<br>Comisionamiento (UMC)</b>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="footer-val" data-cfg="titulo">${cfg.titulo}</span></td>
+        <td>
+          <span class="footer-val" data-cfg="codigo">${cfg.codigo}</span>
+          <span style="float:right;">p&aacute;g. ${pNum}</span>
+        </td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+function getConfig() {
+  const fecha = dateInputToDisplay(document.getElementById('cfg-fecha')?.value);
+  return {
+    titulo: document.getElementById('cfg-titulo')?.value || 'INFORME DE PRUEBA - INTERRUPTOR DE POTENCIA EN CELDA DE 23 kV',
+    codigo: document.getElementById('cfg-codigo')?.value || '+J01',
+    fecha: fecha,
+    firma: fecha,
+  };
+}
+
+function makePageFooter() {
+  const cfg = getConfig();
+  return `<div class="page-footer">
+    <table class="footer-table">
+      <tr>
+        <td style="width:33%;font-weight:bold;">Por RIEDER &amp; CIA</td>
+        <td style="width:34%;font-weight:bold;">Vo. Bo. Consultor&iacute;a</td>
+        <td style="width:33%;font-weight:bold;">Vo. Bo. Cliente</td>
+      </tr>
+      <tr>
+        <td>Nombre:<br><br></td>
+        <td>Nombre:<br><br></td>
+        <td>Nombre / DPTO :<br><br></td>
+      </tr>
+      <tr>
+        <td>Firma/Fecha:<br><span class="footer-val" data-cfg="firma">${cfg.firma}</span></td>
+        <td>Firma/Fecha:<br><br></td>
+        <td>Firma/Fecha:<br><br></td>
+      </tr>
+    </table>
+  </div>`;
+}
+
+function wrapPage(content) {
+  pageNum++;
+  return `<div class="report-page">
+    ${makePageHeader(pageNum)}
+    <div class="page-content">${content}</div>
+    ${makePageFooter()}
+  </div>`;
+}
+
+// ===== RENDERING =====
+async function generateReport() {
+  document.getElementById('btn-generate').disabled = true;
+  setStatus('Procesando archivos...');
+  try {
+    for (const slot of ['O1','C','OCO','CO','O2']) {
+      setStatus(`Parseando ${slot}...`);
+      parsedData[slot] = await parseDocx(files[slot], slot);
+    }
+    setStatus('Generando informe...');
+    pageNum = 0;
+    const o1 = parsedData['O1'];
+    let h = '';
+    h += renderPage1();
+    h += renderPage2(o1);
+    h += renderAnnexO1(parsedData['O1']);
+    h += renderAnnexC(parsedData['C']);
+    h += renderAnnexOCO(parsedData['OCO']);
+    h += renderAnnexCO(parsedData['CO']);
+    h += renderAnnexO2(parsedData['O2']);
+    h += `<div id="btn-save-container" class="no-print" style="text-align:center; margin:20px auto; padding:20px;">
+      <button id="btn-all-correcto" onclick="markAllCorrecto()" style="background:#1565c0;color:#fff;border:none;padding:10px 24px;font-size:11pt;border-radius:6px;cursor:pointer;font-weight:bold;margin-right:12px;">
+        Marcar todos Correcto
+      </button>
+      <button id="btn-save" onclick="generateWord()" style="background:#2e7d32;color:#fff;border:none;padding:16px 40px;font-size:14pt;border-radius:8px;cursor:pointer;font-weight:bold;box-shadow:0 4px 12px rgba(46,125,50,0.3);transition:all 0.2s;">
+        Guardar Cambios y Generar Word (.docx)
+      </button>
+    </div>`;
+    document.getElementById('report-container').innerHTML = h;
+    document.getElementById('report-container').style.display = 'block';
+    setupFooterSync();
+    setStatus('Informe generado. Puede editar campos y luego hacer clic en "Guardar Cambios" al final.');
+  } catch (err) { setStatus('Error: ' + err.message); console.error(err); }
+  document.getElementById('btn-generate').disabled = false;
+}
+
+// Page 1: LISTADO DE PRUEBAS + DATOS GENERALES (cliente, obra)
+function renderPage1() {
+  const content = `
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" colspan="3" style="text-align:center;font-size:12pt;">LISTADO DE PRUEBAS</td></tr>
+      <tr>
+        <td class="lbl" style="width:70%">1. Inspecci&oacute;n Visual</td>
+        <td class="data" style="text-align:center;width:15%"><span class="radio-toggle" data-group="iv" data-value="aplica" data-label="APLICA" onclick="toggleRadio(this)">(X) APLICA</span></td>
+        <td class="data" style="text-align:center;width:15%"><span class="radio-toggle" data-group="iv" data-value="no-aplica" data-label="NO APL." onclick="toggleRadio(this)">( ) NO APL.</span></td>
+      </tr>
+      <tr>
+        <td class="lbl">2. Tiempos de Operaci&oacute;n y Discordancia de Fases</td>
+        <td class="data" style="text-align:center"><span class="radio-toggle" data-group="to" data-value="aplica" data-label="APLICA" onclick="toggleRadio(this)">(X) APLICA</span></td>
+        <td class="data" style="text-align:center"><span class="radio-toggle" data-group="to" data-value="no-aplica" data-label="NO APL." onclick="toggleRadio(this)">( ) NO APL.</span></td>
+      </tr>
+    </table>
+    <div style="height:10px;"></div>
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" colspan="4" style="text-align:center;font-size:12pt;">DATOS GENERALES</td></tr>
+      <tr><td class="lbl" style="width:25%">CLIENTE</td><td class="data" colspan="3">ANDE</td></tr>
+      <tr><td class="lbl">OBRA / LUGAR</td><td class="data" colspan="3"><input class="field-input" id="f-obra" data-field="obra" value="SUBESTACION CAPIATA"></td></tr>
+    </table>`;
+  return wrapPage(content);
+}
+
+// Page 2: DESCRIPCION GENERAL + VERIFICACION VISUAL + TIEMPOS + OBSERVACIONES + ANEXO
+function renderPage2(o1) {
+  const serial = o1.header.serial || '';
+  const tipo = o1.header.type || '8DA10';
+  const visItems = [
+    'Estado de la base portante',
+    'Estado de la unidad del mecanismo de accionamiento',
+    'Estado de la unidad de mando',
+    'Estado indicador de presi&oacute;n',
+    'Comprobar la hermeticidad de los polos'
+  ];
+  let visRows = '';
+  visItems.forEach((item, idx) => {
+    visRows += `<tr>
+      <td class="lbl">${item}</td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="va${idx}" data-value="buen" data-label="Buen estado" onclick="toggleRadio(this)">(X) Buen estado</span></td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="va${idx}" data-value="mal" data-label="Mal estado" onclick="toggleRadio(this)">( ) Mal estado</span></td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="vb${idx}" data-value="buen" data-label="Buen estado" onclick="toggleRadio(this)">(X) Buen estado</span></td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="vb${idx}" data-value="mal" data-label="Mal estado" onclick="toggleRadio(this)">( ) Mal estado</span></td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="vc${idx}" data-value="buen" data-label="Buen estado" onclick="toggleRadio(this)">(X) Buen estado</span></td>
+      <td class="data" style="text-align:center"><span class="radio-toggle" data-group="vc${idx}" data-value="mal" data-label="Mal estado" onclick="toggleRadio(this)">( ) Mal estado</span></td>
+    </tr>`;
+  });
+  const content = `
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" colspan="4" style="text-align:center;">DESCRIPCI&Oacute;N GENERAL</td></tr>
+      <tr>
+        <td class="lbl" style="width:25%">FABRICANTE</td><td class="data"><input class="field-input" data-field="fabricante" value="SIEMENS"></td>
+        <td class="lbl">TENSI&Oacute;N ASIGNADA NORMAL</td><td class="data"><input class="field-input" data-field="tension" value="24kV"></td>
+      </tr>
+      <tr>
+        <td class="lbl">TIPO</td><td class="data"><input class="field-input" data-field="tipo" value="${tipo}"></td>
+        <td class="lbl">CORRIENTE ASIGNADA NORMAL</td><td class="data"><input class="field-input" data-field="corriente" value="4000A"></td>
+      </tr>
+      <tr>
+        <td class="lbl">A&Ntilde;O FABRICACI&Oacute;N</td><td class="data"><input class="field-input" data-field="anio" value="2023"></td>
+        <td class="lbl">CORRIENTE DE CORTOCIRCUITO</td><td class="data"><input class="field-input" data-field="cortocircuito" value="40kA"></td>
+      </tr>
+      <tr>
+        <td class="lbl">N&Uacute;MERO DE SERIE</td><td class="data"><input class="field-input" data-field="serial" value="${serial}"></td>
+        <td class="lbl">FRECUENCIA NOMINAL</td><td class="data"><input class="field-input" data-field="frecuencia" value="50Hz"></td>
+      </tr>
+    </table>
+    <div style="height:6px;"></div>
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" colspan="7" style="text-align:center;font-size:12pt;">1. VERIFICACI&Oacute;N VISUAL</td></tr>
+      <tr>
+        <td class="hdr" rowspan="2" style="width:28%">Elemento</td>
+        <td class="hdr" colspan="2" style="text-align:center">Fase A</td>
+        <td class="hdr" colspan="2" style="text-align:center">Fase B</td>
+        <td class="hdr" colspan="2" style="text-align:center">Fase C</td>
+      </tr>
+      <tr>
+        <td class="hdr" style="text-align:center;width:12%">Buen estado</td><td class="hdr" style="text-align:center;width:12%">Mal estado</td>
+        <td class="hdr" style="text-align:center;width:12%">Buen estado</td><td class="hdr" style="text-align:center;width:12%">Mal estado</td>
+        <td class="hdr" style="text-align:center;width:12%">Buen estado</td><td class="hdr" style="text-align:center;width:12%">Mal estado</td>
+      </tr>
+      ${visRows}
+    </table>
+    <div style="height:6px;"></div>
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" colspan="4" style="text-align:center;font-size:12pt;">2. TIEMPOS DE OPERACI&Oacute;N DE LOS CONTACTOS PRINCIPALES DEL INTERRUPTOR</td></tr>
+      <tr><td class="hdr" colspan="4" style="text-align:center;">Equipo Utilizado para la prueba</td></tr>
+      <tr>
+        <td class="lbl" style="width:25%">Descripci&oacute;n</td>
+        <td class="lbl" style="width:25%">Fabricante</td>
+        <td class="lbl" style="width:25%">Modelo &ndash; Serie No.</td>
+        <td class="lbl" style="width:25%">Fecha de la &uacute;ltima calibraci&oacute;n</td>
+      </tr>
+      <tr>
+        <td class="data">Oscilogr&aacute;fo</td>
+        <td class="data">DV Power</td>
+        <td class="data"><input class="field-input" data-field="equipo_modelo" value="CAT124A &ndash; 22U939"></td>
+        <td class="data"><input class="field-input" data-field="equipo_calibracion" value="10-OCT-2025"></td>
+      </tr>
+    </table>
+    <p style="margin:4px 0;font-size:9pt;">Ver reporte de pruebas del equipo, en anexo.</p>
+    <div style="height:8px;"></div>
+    <table class="tpl-table">
+      <tr><td class="hdr hdr-border" style="text-align:center;font-size:12pt;">OBSERVACIONES</td></tr>
+      <tr><td class="data"><textarea class="field-textarea" data-field="observaciones">Ninguna.</textarea></td></tr>
+    </table>
+    <div style="height:12px;"></div>
+    <div class="annex-separator">
+      <div class="annex-separator-line"></div>
+      <div class="annex-separator-text">ANEXO</div>
+      <div class="annex-separator-line"></div>
+    </div>`;
+  return wrapPage(content);
+}
+
+// ===== ANNEX HELPERS =====
+function annexHeader(data, displayName) {
+  const p = data.params, d = data.deviceSettings;
+  const pKeys = ['Execution date/Time','Coil supply voltage','Measuring time','Command pulse','Resolution','Frequency'];
+  const dKeys = ['Device model / Serial-no','Transducer type','Transducer on CBs phase-s','Transducer transfer functions','Trigger source','BSG mode'];
+  let paramHtml = '';
+  for (let i = 0; i < pKeys.length; i++) {
+    paramHtml += `<tr>
+      <td style="border:none;width:1%;"></td>
+      <td class="lbl">${pKeys[i]}</td><td class="data">${p[pKeys[i]]||''}</td>
+      <td class="lbl">${dKeys[i]}</td><td class="data" colspan="2">${d[dKeys[i]]||''}</td>
+      <td style="border:none;width:1%;"></td>
+    </tr>`;
+  }
+  return `<table class="annex-table">
+    <tr>
+      <td class="lbl">Type</td><td class="data">${data.header.type}</td>
+      <td class="lbl">Serial-no</td><td class="data" colspan="3">${data.header.serial}</td>
+    </tr>
+    <tr><td colspan="6" style="border:none;height:3px;"></td></tr>
+    <tr>
+      <td style="border:none;"></td>
+      <td class="hdr" colspan="2" style="text-align:center;">Timing test</td>
+      <td class="hdr" colspan="3">${displayName}</td>
+    </tr>
+    <tr>
+      <td style="border:none;"></td>
+      <td class="hdr" colspan="2" style="text-align:center;">General parameters</td>
+      <td class="hdr" colspan="3" style="text-align:center;">Testing device settings</td>
+    </tr>
+    ${paramHtml}
+  </table>`;
+}
+
+function annexImages(images) {
+  if (!images || !images.length) return '';
+  return images.map(src => `<img class="annex-img" src="${src}">`).join('');
+}
+
+function isNumeric(val) {
+  const v = val.trim();
+  return v !== '' && !isNaN(parseFloat(v)) && isFinite(v);
+}
+
+function dataTable(section, slot) {
+  if (!section || !section.data.length) return '';
+  const maxC = Math.max(...section.data.map(r => r.length));
+  let h = `<table class="annex-table">`;
+  h += `<tr><td class="hdr" colspan="${maxC+2}" style="text-align:center;">${section.name}</td></tr>`;
+  if (section.columns.length) {
+    h += '<tr><td style="border:none;width:1%;"></td>';
+    section.columns.forEach(c => h += `<td class="lbl" style="text-align:center;">${c}</td>`);
+    for (let p = 0; p < maxC - section.columns.length; p++) h += '<td class="lbl"></td>';
+    h += '<td style="border:none;width:1%;"></td></tr>';
+  }
+  section.data.forEach((row, ri) => {
+    h += '<tr><td style="border:none;"></td>';
+    row.forEach((val, ci) => {
+      if (ci === 0) {
+        h += `<td class="lbl">${val}</td>`;
+      } else if (ci === row.length-1 && (val === '-' || val === 'Correcto')) {
+        const fid = slot ? `pass_${slot}_${section.name}_${ri}` : '';
+        h += `<td class="data" style="padding:1px;">${makePassSelect(val, fid)}</td>`;
+      } else {
+        const align = isNumeric(val) ? 'text-align:right;' : 'text-align:center;';
+        h += `<td class="data" style="${align}">${val}</td>`;
+      }
+    });
+    for (let p = 0; p < maxC - row.length; p++) h += '<td class="data"></td>';
+    h += '<td style="border:none;"></td></tr>';
+  });
+  h += '</table>';
+  return h;
+}
+
+function bounceTable(cData) {
+  const bs = cData.summarySections.find(s => s.name === 'Bounce time');
+  if (!bs) return '';
+  let h = `<table class="annex-table">
+    <tr><td class="hdr" colspan="4" style="text-align:center;">Bounce time</td></tr>
+    <tr><td style="border:none;width:1%;"></td><td class="lbl" style="text-align:center;">Designation</td><td class="lbl" style="text-align:center;">C1</td><td class="lbl" style="text-align:center;">Unit</td></tr>`;
+  for (const r of bs.data) {
+    const val = r[3]||'';
+    const valAlign = isNumeric(val) ? 'text-align:right;' : 'text-align:center;';
+    h += `<tr><td style="border:none;"></td><td class="lbl">${r[0]}</td><td class="data" style="${valAlign}">${val}</td><td class="data" style="text-align:center;">${r[4]||'ms'}</td></tr>`;
+  }
+  return h + '</table>';
+}
+
+function coilTable(section, slot) {
+  if (!section || !section.data.length) return '';
+  const cols = section.columns;
+  let h = `<table class="annex-table">`;
+  h += `<tr><td class="hdr" colspan="${cols.length+2}" style="text-align:center;">${section.name}</td></tr>`;
+  h += '<tr><td style="border:none;width:1%;"></td>';
+  cols.forEach(c => h += `<td class="lbl" style="text-align:center;">${c}</td>`);
+  h += '<td style="border:none;width:1%;"></td></tr>';
+  section.data.forEach((row, ri) => {
+    h += '<tr><td style="border:none;"></td>';
+    row.forEach((val, ci) => {
+      if (ci === 0) {
+        h += `<td class="lbl">${val}</td>`;
+      } else if (ci === row.length-1 && (val === '-' || val === 'Correcto')) {
+        const fid = slot ? `pass_${slot}_${section.name}_${ri}` : '';
+        h += `<td class="data" style="padding:1px;">${makePassSelect(val, fid)}</td>`;
+      } else {
+        const align = isNumeric(val) ? 'text-align:right;' : 'text-align:center;';
+        h += `<td class="data" style="${align}">${val}</td>`;
+      }
+    });
+    h += '<td style="border:none;"></td></tr>';
+  });
+  return h + '</table>';
+}
+
+// ===== ANNEX PAGES =====
+function renderAnnexO1(data) {
+  const s = data.sections;
+  let content1 = annexHeader(data, 'O1 (Open test)');
+  content1 += annexImages(data.images);
+  content1 += dataTable(s.find(x=>x.name==='Main contacts timing'), 'O1');
+  content1 += dataTable(s.find(x=>x.name==='Opening time'), 'O1');
+  const coil = s.find(x=>x.name==='Opening coil result 1');
+  if (coil) {
+    const part1 = { ...coil, data: coil.data.slice(0,2) };
+    content1 += dataTable(part1, 'O1');
+  }
+  let h = wrapPage(content1);
+  if (coil && coil.data.length > 2) {
+    const part2 = { ...coil, name: 'Opening coil result 1 pt2', data: coil.data.slice(2) };
+    h += wrapPage(dataTable(part2, 'O1'));
+  }
+  return h;
+}
+
+function renderAnnexC(data) {
+  const s = data.sections;
+  let content = annexHeader(data, 'C1 (Close test)');
+  content += bounceTable(data);
+  content += annexImages(data.images);
+  content += dataTable(s.find(x=>x.name==='Main contacts timing'), 'C');
+  content += dataTable(s.find(x=>x.name==='Closing time'), 'C');
+  return wrapPage(content);
+}
+
+function renderAnnexOCO(data) {
+  const s = data.sections;
+  let content = annexHeader(data, 'OCO1 (Open-Close-Open test)');
+  content += annexImages(data.images);
+  content += dataTable(s.find(x=>x.name==='Main contacts timing'), 'OCO');
+  content += dataTable(s.find(x=>x.name==='Opening time'), 'OCO');
+  return wrapPage(content);
+}
+
+function renderAnnexCO(data) {
+  const s = data.sections;
+  const coils = s.filter(x=>x.name==='Coil currents');
+  let content1 = annexHeader(data, 'CO1 (Close-Open test)');
+  content1 += annexImages(data.images);
+  content1 += dataTable(s.find(x=>x.name==='Main contacts timing'), 'CO');
+  content1 += dataTable(s.find(x=>x.name==='Closing time'), 'CO');
+  let h = wrapPage(content1);
+  if (coils.length) {
+    let content2 = '';
+    coils.forEach((c, ci) => {
+      const slotId = ci === 0 ? 'CO' : 'CO_coil' + ci;
+      content2 += coilTable(c, slotId);
+    });
+    h += wrapPage(content2);
+  }
+  return h;
+}
+
+function renderAnnexO2(data) {
+  const s = data.sections;
+  let content1 = annexHeader(data, 'O2 (Open test)');
+  content1 += annexImages(data.images);
+  content1 += dataTable(s.find(x=>x.name==='Main contacts timing'), 'O2');
+  content1 += dataTable(s.find(x=>x.name==='Opening time'), 'O2');
+  const coil = s.find(x=>x.name==='Opening coil result 1');
+  if (coil) {
+    const part1 = { ...coil, data: coil.data.slice(0,2) };
+    content1 += dataTable(part1, 'O2');
+  }
+  let h = wrapPage(content1);
+  if (coil && coil.data.length > 2) {
+    const part2 = { ...coil, name: 'Opening coil result 1 pt2', data: coil.data.slice(2) };
+    h += wrapPage(dataTable(part2, 'O2'));
+  }
+  return h;
+}
+
+// ===== INTERACTIVITY =====
+function makePassSelect(currentVal, fieldId) {
+  const val = (currentVal || '-').trim();
+  const cls = val === 'Correcto' ? 'val-correcto' : val === 'Incorrecto' ? 'val-incorrecto' : 'val-pending';
+  const dfAttr = fieldId ? ` data-field="${fieldId}"` : '';
+  return `<select class="pass-select ${cls}"${dfAttr} onchange="onPassChange(this)">
+    <option value="-"${val === '-' ? ' selected' : ''}>-</option>
+    <option value="Correcto"${val === 'Correcto' ? ' selected' : ''}>Correcto</option>
+    <option value="Incorrecto"${val === 'Incorrecto' ? ' selected' : ''}>Incorrecto</option>
+  </select>`;
+}
+
+function onPassChange(sel) {
+  sel.className = 'pass-select ' + (
+    sel.value === 'Correcto' ? 'val-correcto' :
+    sel.value === 'Incorrecto' ? 'val-incorrecto' : 'val-pending'
+  );
+}
+
+function markAllCorrecto() {
+  document.querySelectorAll('select[data-field^="pass_"]').forEach(sel => {
+    sel.value = 'Correcto';
+    sel.className = 'pass-select val-correcto';
+  });
+}
+
+function toggleRadio(el) {
+  const g = el.dataset.group;
+  document.querySelectorAll(`[data-group="${g}"]`).forEach(r => {
+    const label = r.dataset.label;
+    r.textContent = '( )' + (label ? ' ' + label : '');
+  });
+  const label = el.dataset.label;
+  el.textContent = '(X)' + (label ? ' ' + label : '');
+}
+
+function setupFooterSync() {
+  // Config panel inputs update all footer-val spans
+  const cfgMap = {
+    'cfg-titulo': 'titulo',
+    'cfg-codigo': 'codigo',
+    'cfg-fecha': 'fecha',
+  };
+  const dateFields = new Set(['cfg-fecha']);
+  for (const [inputId, cfgKey] of Object.entries(cfgMap)) {
+    const input = document.getElementById(inputId);
+    if (input) {
+      input.addEventListener('input', function() {
+        const display = dateFields.has(inputId) ? dateInputToDisplay(this.value) : this.value;
+        document.querySelectorAll(`.footer-val[data-cfg="${cfgKey}"]`).forEach(el => {
+          el.textContent = display;
+        });
+        // Fecha also updates firma in footer
+        if (inputId === 'cfg-fecha') {
+          document.querySelectorAll('.footer-val[data-cfg="firma"]').forEach(el => {
+            el.textContent = display;
+          });
+        }
+      });
+    }
+  }
+}
+
+// ===== GENERATE WORD (.docx) =====
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function generateWord() {
+  const btn = document.getElementById('btn-save');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Generando...';
+  setStatus('Enviando archivos al servidor...');
+
+  try {
+    const cfg = getConfig();
+
+    // Collect all editable field values from the preview (inputs, textareas, selects)
+    const fields = {};
+    document.querySelectorAll('[data-field]').forEach(el => {
+      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.tagName === 'SELECT') {
+        fields[el.dataset.field] = el.value;
+      }
+    });
+
+    // Collect verification visual states (Buen/Mal estado per item per phase)
+    const verificacion = [];
+    for (let i = 0; i < 5; i++) {
+      const row = {};
+      for (const phase of ['a', 'b', 'c']) {
+        const group = `v${phase}${i}`;
+        let val = 'buen';
+        document.querySelectorAll(`[data-group="${group}"]`).forEach(r => {
+          if (r.textContent.includes('(X)')) val = r.dataset.value;
+        });
+        row[phase] = val;
+      }
+      verificacion.push(row);
+    }
+    fields.verificacion = verificacion;
+
+    const payload = { files: {}, config: cfg, fields: fields };
+    for (const slot of ['O1','C','OCO','CO','O2']) {
+      payload.files[slot] = await fileToBase64(files[slot]);
+    }
+
+    setStatus('Generando documento Word...');
+    const resp = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      throw new Error(err.error || 'Error del servidor');
+    }
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'INFORME_GENERADO.docx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('Documento Word generado y descargado.');
+  } catch (err) {
+    const detail = err.message || String(err);
+    setStatus('Error: ' + detail + (detail.includes('fetch') ? ' — Verificar que el servidor (python app.py) esté corriendo.' : ''));
+    console.error('generateWord error:', err);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Guardar Cambios y Generar Word (.docx)';
+}
+
+// ===== FOLDER SELECTION & AUTO-DETECTION =====
+const SLOTS = ['O1','C','OCO','CO','O2'];
+const SLOT_LABELS = { O1:'Open test 1', C:'Close test', OCO:'Open-Close-Open', CO:'Close-Open', O2:'Open test 2' };
+let folderFiles = [];     // all .docx File objects from folder
+let folderAssign = {};    // { slot: fileIndex } current assignment
+
+function detectSlot(filename) {
+  const name = filename.replace(/\.docx$/i, '').trim();
+  const upper = name.toUpperCase();
+
+  // Exact matches first
+  if (/^O1$/i.test(name)) return 'O1';
+  if (/^O2$/i.test(name)) return 'O2';
+  if (/^C$/i.test(name)) return 'C';
+  if (/^CO$/i.test(name)) return 'CO';
+
+  // OCO patterns: O_03s_CO, O-03s-CO, OCO, O_CO, etc.
+  if (/^O[_\-]?\d*s?[_\-]?CO$/i.test(name)) return 'OCO';
+  if (/^OCO/i.test(name)) return 'OCO';
+  if (/O.*\d+.*s.*CO/i.test(name)) return 'OCO';
+
+  // Patterns with prefixes/suffixes
+  if (/\bO1\b/i.test(upper)) return 'O1';
+  if (/\bO2\b/i.test(upper)) return 'O2';
+  // CO must be checked before C (CO contains C)
+  if (/\bOCO\b/i.test(upper)) return 'OCO';
+  if (/\bCO\b/i.test(upper) && !/\bOCO\b/i.test(upper)) return 'CO';
+  // C last - single letter, most ambiguous
+  if (/\bC\b/i.test(upper) && !/\bCO\b/i.test(upper) && !/\bOCO\b/i.test(upper)) return 'C';
+
+  return null;
+}
+
+function handleFolderSelect(input) {
+  const allFiles = Array.from(input.files);
+  folderFiles = allFiles.filter(f => f.name.toLowerCase().endsWith('.docx'));
+
+  if (folderFiles.length === 0) {
+    alert('No se encontraron archivos .docx en la carpeta seleccionada.');
+    return;
+  }
+
+  // Auto-detect assignments
+  folderAssign = {};
+  const usedFiles = new Set();
+
+  // First pass: detect slots
+  for (let i = 0; i < folderFiles.length; i++) {
+    const slot = detectSlot(folderFiles[i].name);
+    if (slot && !folderAssign[slot]) {
+      folderAssign[slot] = i;
+      usedFiles.add(i);
+    }
+  }
+
+  renderFolderModal();
+  document.getElementById('folder-modal').style.display = 'flex';
+}
+
+function renderFolderModal() {
+  const container = document.getElementById('folder-assignments');
+  const unassignedDiv = document.getElementById('folder-unassigned');
+  let html = '';
+
+  // Build options for each select
+  const fileOptions = folderFiles.map((f, i) => `<option value="${i}">${f.name}</option>`).join('');
+  const emptyOption = '<option value="-1">-- Sin asignar --</option>';
+
+  for (const slot of SLOTS) {
+    const assignedIdx = folderAssign[slot] !== undefined ? folderAssign[slot] : -1;
+    const detected = assignedIdx >= 0;
+    const statusClass = detected ? 'ok' : 'no';
+    const statusText = detected ? 'Detectado' : 'Sin asignar';
+
+    html += `<div class="assign-row">
+      <div class="assign-slot${detected ? '' : ' empty'}">${slot}</div>
+      <div style="color:#888;font-size:8pt;min-width:90px;">${SLOT_LABELS[slot]}</div>
+      <select class="assign-select" data-slot="${slot}" onchange="updateFolderAssign(this)">
+        ${emptyOption}${fileOptions}
+      </select>
+      <span class="assign-status ${statusClass}" data-slot-status="${slot}">${statusText}</span>
+    </div>`;
+  }
+  container.innerHTML = html;
+
+  // Set selected values
+  for (const slot of SLOTS) {
+    const sel = container.querySelector(`select[data-slot="${slot}"]`);
+    sel.value = folderAssign[slot] !== undefined ? folderAssign[slot] : -1;
+  }
+
+  // Show unassigned files
+  const assignedIndices = new Set(Object.values(folderAssign));
+  const unassigned = folderFiles.filter((_, i) => !assignedIndices.has(i));
+  if (unassigned.length > 0) {
+    unassignedDiv.innerHTML = `<div style="font-size:8pt;color:#999;margin-top:5px;">Archivos no asignados: ${unassigned.map(f => f.name).join(', ')}</div>`;
+  } else {
+    unassignedDiv.innerHTML = '';
+  }
+
+  // Enable/disable confirm based on all 5 assigned
+  const allAssigned = SLOTS.every(s => folderAssign[s] !== undefined && folderAssign[s] >= 0);
+  document.getElementById('btn-confirm-folder').disabled = !allAssigned;
+  document.getElementById('btn-confirm-folder').style.opacity = allAssigned ? '1' : '0.5';
+}
+
+function updateFolderAssign(select) {
+  const slot = select.dataset.slot;
+  const val = parseInt(select.value);
+
+  // Remove previous assignment for this slot
+  if (folderAssign[slot] !== undefined) delete folderAssign[slot];
+
+  if (val >= 0) {
+    // If this file was assigned to another slot, unassign it
+    for (const s of SLOTS) {
+      if (s !== slot && folderAssign[s] === val) {
+        delete folderAssign[s];
+      }
+    }
+    folderAssign[slot] = val;
+  }
+
+  renderFolderModal();
+}
+
+function closeFolderModal() {
+  document.getElementById('folder-modal').style.display = 'none';
+}
+
+function confirmFolderAssignment() {
+  // Apply assignments to the file slots
+  for (const slot of SLOTS) {
+    const idx = folderAssign[slot];
+    if (idx !== undefined && idx >= 0) {
+      const file = folderFiles[idx];
+      files[slot] = file;
+      const slotEl = document.querySelector(`.upload-slot[data-slot="${slot}"]`);
+      slotEl.classList.add('loaded');
+      slotEl.querySelector('.slot-file').textContent = file.name;
+    }
+  }
+
+  updateButtons();
+  closeFolderModal();
+  setStatus('Archivos cargados desde carpeta. Puede generar el informe.');
+}
+</script>
+</body>
+</html>

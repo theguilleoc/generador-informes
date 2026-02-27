@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+INFORME_GENERADO.*
+~$*
+node_modules/
+_temp/
+*_unzipped/
+diff_pages/
+output_pages*/
+template_pages/
+test_screenshots/
+output_check.pdf
+template_output.pdf
+logo_extracted.png
+logo_base64.txt
+.pytest_cache/
+.env
