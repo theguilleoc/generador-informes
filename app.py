@@ -16,6 +16,14 @@ class ReportHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=BASE_DIR, **kwargs)
 
+    def do_GET(self):
+        if self.path == '/':
+            self.send_response(301)
+            self.send_header('Location', '/report.html')
+            self.end_headers()
+            return
+        super().do_GET()
+
     def do_POST(self):
         if self.path == '/generate':
             self.handle_generate()
