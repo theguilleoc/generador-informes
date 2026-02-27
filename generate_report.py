@@ -9,6 +9,7 @@ from copy import deepcopy
 from lxml import etree
 from docx import Document
 from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_FILES = {
@@ -208,6 +209,105 @@ def set_cell_text(cell, text):
                 r.text = ''
         else:
             p.text = str(text)
+
+
+def center_all_content(doc):
+    """Center all body tables and VML image paragraphs. Fix VML absolute positioning."""
+    NSMAP = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+    VML_NS_URI = 'urn:schemas-microsoft-com:vml'
+
+    # --- Center all tables ---
+    for tbl in doc.tables:
+        tblPr = tbl._tbl.find(qn('w:tblPr'))
+        if tblPr is None:
+            tblPr = OxmlElement('w:tblPr')
+            tbl._tbl.insert(0, tblPr)
+        for old in tblPr.findall(qn('w:jc')):
+            tblPr.remove(old)
+        for old in tblPr.findall(qn('w:tblInd')):
+            tblPr.remove(old)
+        jc = OxmlElement('w:jc')
+        jc.set(qn('w:val'), 'center')
+        tblPr.append(jc)
+
+    body = doc.element.body
+
+    # --- Fix VML shapes: remove absolute positioning, keep original dimensions ---
+    for shape in body.iter('{' + VML_NS_URI + '}shape'):
+        imgdata = shape.find('{' + VML_NS_URI + '}imagedata')
+        if imgdata is None:
+            continue
+        style = shape.get('style', '')
+        # Extract original width and height
+        w_match = re.search(r'width:\s*[\d.]+(?:pt|in)', style)
+        h_match = re.search(r'height:\s*[\d.]+(?:pt|in)', style)
+        if w_match and h_match:
+            shape.set('style',
+                       f'{w_match.group()};{h_match.group()};visibility:visible')
+        # Remove wrap element (only used with absolute positioning)
+        for wrap in shape.findall('{' + VML_NS_URI + '}wrap'):
+            shape.remove(wrap)
+
+    # --- Center all paragraphs that contain images and set zero spacing ---
+    for p in body.findall('.//w:p', NSMAP):
+        if not p.findall('.//w:pict', NSMAP):
+            continue
+        pPr = p.find(qn('w:pPr'))
+        if pPr is None:
+            pPr = OxmlElement('w:pPr')
+            p.insert(0, pPr)
+        for old in pPr.findall(qn('w:jc')):
+            pPr.remove(old)
+        jc = OxmlElement('w:jc')
+        jc.set(qn('w:val'), 'center')
+        pPr.append(jc)
+        # Zero paragraph spacing so image pairs stay together
+        for old in pPr.findall(qn('w:spacing')):
+            pPr.remove(old)
+        spacing = OxmlElement('w:spacing')
+        spacing.set(qn('w:before'), '0')
+        spacing.set(qn('w:after'), '0')
+        pPr.append(spacing)
+
+    # --- Remove empty paragraphs between consecutive image paragraphs ---
+    children = list(body)
+    to_remove = []
+    for i, child in enumerate(children):
+        if child.tag != qn('w:p'):
+            continue
+        # Skip if paragraph has images or text
+        if child.findall('.//' + qn('w:pict')) or child.findall('.//' + qn('w:t')):
+            continue
+        # Empty paragraph — check if it sits between two image paragraphs
+        has_img_before = False
+        for j in range(i - 1, -1, -1):
+            prev = children[j]
+            if prev.tag == qn('w:tbl'):
+                break
+            if prev.tag == qn('w:p'):
+                if prev.findall('.//' + qn('w:pict')):
+                    has_img_before = True
+                    break
+                if prev.findall('.//' + qn('w:t')):
+                    break
+        if not has_img_before:
+            continue
+        has_img_after = False
+        for j in range(i + 1, len(children)):
+            nxt = children[j]
+            if nxt.tag == qn('w:tbl'):
+                break
+            if nxt.tag == qn('w:p'):
+                if nxt.findall('.//' + qn('w:pict')):
+                    has_img_after = True
+                    break
+                if nxt.findall('.//' + qn('w:t')):
+                    break
+        if has_img_after:
+            to_remove.append(child)
+
+    for p in to_remove:
+        body.remove(p)
 
 
 def clean_header_footer(doc, config=None):
@@ -754,6 +854,10 @@ def generate(input_files, template_path, output_path, config=None, fields=None):
     # Step 2: Open template and modify table data
     print("\nStep 2: Modifying template tables...")
     doc = Document(template_path)
+
+    # Center all tables and VML images horizontally
+    print("  Centering all tables and images...")
+    center_all_content(doc)
 
     # Clean (VARIABLE...) markers from header, footer, and all body tables
     print("  Cleaning VARIABLE markers...")
