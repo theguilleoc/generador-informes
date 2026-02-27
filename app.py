@@ -3,7 +3,7 @@
 Run: python app.py
 Open: http://127.0.0.1:8080/report.html
 """
-import os, sys, json, base64, tempfile, webbrowser, threading, importlib
+import os, sys, json, base64, tempfile, webbrowser, threading, importlib, re
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,11 +58,23 @@ class ReportHandler(SimpleHTTPRequestHandler):
                 with open(output_path, 'rb') as f:
                     docx_bytes = f.read()
 
+                # Build filename from codigo and obra/lugar
+                codigo = (config.get('codigo') or '').strip()
+                obra = (fields.get('obra') or '').strip()
+                parts = ['informe_generado']
+                if codigo:
+                    parts.append(codigo)
+                if obra:
+                    parts.append(obra)
+                filename = '_'.join(parts) + '.docx'
+                # Sanitize: remove characters not safe for filenames
+                filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+
                 self.send_response(200)
                 self.send_header('Content-Type',
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
                 self.send_header('Content-Disposition',
-                    'attachment; filename="INFORME_GENERADO.docx"')
+                    f'attachment; filename="{filename}"')
                 self.send_header('Content-Length', len(docx_bytes))
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
