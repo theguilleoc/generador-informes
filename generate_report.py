@@ -690,8 +690,11 @@ def apply_fields(doc, fields):
 
     # NOTE: pass/check overrides are applied AFTER update_data_rows in generate()
 
-    # Apply verification visual states (Buen/Mal estado)
-    # These cells have 2 paragraphs ("Buen estado" + " Mal estado"), need to clear both
+    # Apply verification visual states via Wingdings checkbox symbols
+    # Each cell has 2 paragraphs with w:sym elements: p0="Buen estado", p1="Mal estado"
+    # We toggle the w:char attribute: F0FE=☑ checked, F06F=☐ unchecked
+    CHECKED = 'F0FE'
+    UNCHECKED = 'F06F'
     verificacion = fields.get('verificacion')
     if verificacion and isinstance(verificacion, list):
         for i, item in enumerate(verificacion):
@@ -704,14 +707,14 @@ def apply_fields(doc, fields):
                 ci = 1 + pi
                 if ci < len(cells):
                     val = item.get(phase, 'buen')
-                    text = 'Buen estado' if val == 'buen' else 'Mal estado'
                     cell = cells[ci]
-                    # Set first paragraph text
-                    set_cell_text(cell, text)
-                    # Clear any additional paragraphs (template has 2 lines)
-                    for p in cell.paragraphs[1:]:
-                        for r in p.runs:
-                            r.text = ''
+                    for p_idx, p in enumerate(cell.paragraphs):
+                        sym = p._element.find('.//' + qn('w:sym'))
+                        if sym is not None:
+                            if (p_idx == 0 and val == 'buen') or (p_idx == 1 and val == 'mal'):
+                                sym.set(qn('w:char'), CHECKED)
+                            else:
+                                sym.set(qn('w:char'), UNCHECKED)
 
 
 # =============================================================================
