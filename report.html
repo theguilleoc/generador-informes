@@ -978,7 +978,9 @@ async function generateWord() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'INFORME_GENERADO.docx';
+    const disp = resp.headers.get('Content-Disposition') || '';
+    const match = disp.match(/filename="(.+?)"/);
+    a.download = match ? match[1] : 'INFORME_GENERADO.docx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
